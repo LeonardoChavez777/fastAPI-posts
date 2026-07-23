@@ -26,12 +26,8 @@ app.add_middleware(
 app.include_router(posts.router)
 app.include_router(users.router)
 app.include_router(auth.router)
-app.include_router(vote.router)
+app.include_router(vote.router) 
 
 @app.get("/")
 def root():
-    return {"message": "Hello World, my api is working with google"}
-
-
-
-
+    return {"message": "Hola wikita, bienvenida a mi API, puedes probarla en /docs, osea poniendo /docs al final de la url"}
