@@ -30,4 +30,4 @@ app.include_router(vote.router)
 
 @app.get("/")
 def root():
-    return {"message": "Hola wikita, bienvenida a mi API, puedes probarla en /docs, osea poniendo /docs al final de la url"}
+    return {"message": "epico"}
