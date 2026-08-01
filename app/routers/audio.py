@@ -1,0 +1,300 @@
+from __future__ import annotations
+
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import List
+from uuid import uuid4
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import HTMLResponse, Response
+from imageio_ffmpeg import get_ffmpeg_exe
+
+router = APIRouter(prefix="/audio", tags=["Audio"])
+
+SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".mp4"}
+MEDIA_TYPES = {
+    "mp3": "audio/mpeg",
+    "wav": "audio/wav",
+    "mp4": "audio/mp4",
+}
+
+FFMPEG_BIN = Path(get_ffmpeg_exe())
+
+
+def _run_ffmpeg(command: List[str], cwd: Path | None = None) -> None:
+    result = subprocess.run(
+        command,
+        cwd=str(cwd) if cwd else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "Audio processing failed"
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+def _build_html_interface() -> str:
+    return """
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Combinar audios en loop</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f7f7fb;
+            margin: 0;
+            padding: 32px;
+            color: #1f2937;
+        }
+        .card {
+            max-width: 760px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+        }
+        h1 {
+            margin-top: 0;
+        }
+        form {
+            display: grid;
+            gap: 16px;
+        }
+        label {
+            font-weight: 600;
+        }
+        input, select, button {
+            font-size: 16px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+        }
+        button {
+            cursor: pointer;
+            background: #2563eb;
+            color: white;
+            border: none;
+            font-weight: 700;
+        }
+        .status {
+            margin-top: 14px;
+            font-weight: 600;
+            color: #0f766e;
+        }
+        .hint {
+            color: #475569;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Combinar audios y ponerlos en loop</h1>
+        <p class="hint">Sube varios archivos en formato MP3, WAV o MP4. El endpoint los combina en un solo audio y lo repite el número de veces que indiques.</p>
+        <form id="audio-form" enctype="multipart/form-data">
+            <label for="files">Audios a combinar</label>
+            <input id="files" name="files" type="file" multiple accept=".mp3,.wav,.mp4,audio/mpeg,audio/wav,audio/mp4" required />
+
+            <label for="loop_count">Número de repeticiones</label>
+            <input id="loop_count" name="loop_count" type="number" min="1" max="20" value="3" required />
+
+            <label for="output_format">Formato de salida</label>
+            <select id="output_format" name="output_format">
+                <option value="wav">WAV</option>
+                <option value="mp3">MP3</option>
+                <option value="mp4">MP4</option>
+            </select>
+
+            <button type="submit">Combinar audio</button>
+        </form>
+        <div id="status" class="status" aria-live="polite"></div>
+    </div>
+    <script>
+        const form = document.getElementById('audio-form');
+        const status = document.getElementById('status');
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const files = document.getElementById('files').files;
+
+            if (!files.length) {
+                status.textContent = 'Debes seleccionar al menos un archivo.';
+                return;
+            }
+
+            status.textContent = 'Procesando audio...';
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/audio/combine-loop', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ detail: 'No se pudo generar la mezcla.' }));
+                    status.textContent = error.detail || 'No se pudo generar la mezcla.';
+                    return;
+                }
+
+                const blob = await response.blob();
+                const outputFormat = document.getElementById('output_format').value;
+                const downloadUrl = URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = downloadUrl;
+                anchor.download = `looped-audio.${outputFormat}`;
+                anchor.click();
+                URL.revokeObjectURL(downloadUrl);
+                status.textContent = '¡Audio combinado y listo para descargar!';
+            } catch (error) {
+                status.textContent = 'Ocurrió un error al procesar el archivo.';
+                console.error(error);
+            }
+        });
+    </script>
+</body>
+</html>
+"""
+
+
+@router.get("/interface", response_class=HTMLResponse)
+def audio_interface():
+    return HTMLResponse(content=_build_html_interface())
+
+
+@router.post("/combine-loop")
+async def combine_loop(
+    files: List[UploadFile] = File(...),
+    loop_count: int = Form(1),
+    output_format: str = Form("mp3"),
+):
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Debes enviar al menos un archivo.")
+
+    if loop_count < 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="loop_count debe ser mayor o igual a 1.")
+
+    output_format = output_format.lower().strip()
+    if output_format not in MEDIA_TYPES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de salida no soportado. Usa mp3, wav o mp4.")
+
+    with tempfile.TemporaryDirectory(prefix="audio-loop-") as temp_dir:
+        temp_path = Path(temp_dir)
+        converted_files: List[Path] = []
+
+        for index, uploaded_file in enumerate(files):
+            if not uploaded_file.filename:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cada archivo debe tener un nombre válido.")
+
+            file_extension = Path(uploaded_file.filename).suffix.lower()
+            if file_extension not in SUPPORTED_EXTENSIONS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Formato no soportado: {uploaded_file.filename}. Solo se aceptan mp3, wav y mp4.",
+                )
+
+            source_path = temp_path / f"input_{index}_original{file_extension}"
+            source_bytes = await uploaded_file.read()
+            source_path.write_bytes(source_bytes)
+
+            converted_path = temp_path / f"input_{index}_converted.wav"
+            _run_ffmpeg(
+                [
+                    str(FFMPEG_BIN),
+                    "-y",
+                    "-i",
+                    str(source_path),
+                    "-vn",
+                    "-acodec",
+                    "pcm_s16le",
+                    "-ar",
+                    "44100",
+                    str(converted_path),
+                ]
+            )
+            converted_files.append(converted_path)
+
+        concat_list_path = temp_path / "concat.txt"
+        concat_content = "\n".join([f"file '{path.as_posix()}'" for path in converted_files]) + "\n"
+        concat_list_path.write_text(concat_content, encoding="utf-8")
+
+        combined_wav = temp_path / "combined.wav"
+        _run_ffmpeg(
+            [
+                str(FFMPEG_BIN),
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list_path),
+                "-c:a",
+                "pcm_s16le",
+                str(combined_wav),
+            ]
+        )
+
+        looped_audio = temp_path / "looped.wav"
+        _run_ffmpeg(
+            [
+                str(FFMPEG_BIN),
+                "-y",
+                "-stream_loop",
+                str(loop_count - 1),
+                "-i",
+                str(combined_wav),
+                "-c:a",
+                "pcm_s16le",
+                str(looped_audio),
+            ]
+        )
+
+        output_path = temp_path / f"looped_audio.{output_format}"
+        if output_format == "wav":
+            _run_ffmpeg([
+                str(FFMPEG_BIN),
+                "-y",
+                "-i",
+                str(looped_audio),
+                "-c:a",
+                "pcm_s16le",
+                str(output_path),
+            ])
+        elif output_format == "mp3":
+            _run_ffmpeg([
+                str(FFMPEG_BIN),
+                "-y",
+                "-i",
+                str(looped_audio),
+                "-vn",
+                "-codec:a",
+                "libmp3lame",
+                str(output_path),
+            ])
+        else:
+            _run_ffmpeg([
+                str(FFMPEG_BIN),
+                "-y",
+                "-i",
+                str(looped_audio),
+                "-vn",
+                "-codec:a",
+                "aac",
+                str(output_path),
+            ])
+
+        download_filename = f"combined-loop_{uuid4().hex}.{output_format}"
+        final_bytes = output_path.read_bytes()
+
+    return Response(
+        content=final_bytes,
+        media_type=MEDIA_TYPES[output_format],
+        headers={"Content-Disposition": f'attachment; filename="{download_filename}"'},
+    )

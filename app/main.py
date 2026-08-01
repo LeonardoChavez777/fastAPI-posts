@@ -3,7 +3,7 @@ from fastapi import FastAPI
 
 from . import databasemodels
 from .database import engine
-from .routers import posts, users, auth, vote
+from .routers import posts, users, auth, vote, audio
 from fastapi.middleware.cors import CORSMiddleware
 
 #databasemodels.Base.metadata.create_all(bind=engine) #crea las tablas en la base de datos si no existen, utilizando psqlchemy
@@ -26,7 +26,8 @@ app.add_middleware(
 app.include_router(posts.router)
 app.include_router(users.router)
 app.include_router(auth.router)
-app.include_router(vote.router) 
+app.include_router(vote.router)
+app.include_router(audio.router)
 
 @app.get("/")
 def root():
