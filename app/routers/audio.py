@@ -12,11 +12,12 @@ from imageio_ffmpeg import get_ffmpeg_exe
 
 router = APIRouter(prefix="/audio", tags=["Audio"])
 
-SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".mp4"}
+SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".mp4", ".m4a"}
 MEDIA_TYPES = {
     "mp3": "audio/mpeg",
     "wav": "audio/wav",
     "mp4": "audio/mp4",
+    "m4a": "audio/mp4",
 }
 
 FFMPEG_BIN = Path(get_ffmpeg_exe())
@@ -117,7 +118,7 @@ def _build_html_interface() -> str:
         <p class="hint">Sube varios archivos en formato MP3, WAV o MP4. El endpoint los combina en un solo audio y lo repite el número de veces que indiques.</p>
         <form id="audio-form" enctype="multipart/form-data">
             <label for="files">Audios a combinar</label>
-            <input id="files" name="files" type="file" multiple accept=".mp3,.wav,.mp4,audio/mpeg,audio/wav,audio/mp4" required />
+            <input id="files" name="files" type="file" multiple accept=".mp3,.wav,.mp4,.m4a,audio/mpeg,audio/wav,audio/mp4" required />
 
             <label for="loop_count">Número de repeticiones</label>
             <input id="loop_count" name="loop_count" type="number" min="1" max="20" value="3" required />
@@ -127,6 +128,7 @@ def _build_html_interface() -> str:
                 <option value="wav">WAV</option>
                 <option value="mp3">MP3</option>
                 <option value="mp4">MP4</option>
+                <option value="m4a">M4A</option>
             </select>
 
             <button type="submit">Combinar audio</button>
@@ -311,7 +313,7 @@ async def combine_loop(
             if file_extension not in SUPPORTED_EXTENSIONS:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Formato no soportado: {uploaded_file.filename}. Solo se aceptan mp3, wav y mp4.",
+                    detail=f"Formato no soportado: {uploaded_file.filename}. Solo se aceptan mp3, wav, mp4 y m4a.",
                 )
 
             source_path = temp_path / f"input_{index}_original{file_extension}"
@@ -391,6 +393,17 @@ async def combine_loop(
                 "-vn",
                 "-codec:a",
                 "libmp3lame",
+                str(output_path),
+            ])
+        elif output_format == "m4a":
+            _run_ffmpeg([
+                str(FFMPEG_BIN),
+                "-y",
+                "-i",
+                str(looped_audio),
+                "-vn",
+                "-codec:a",
+                "aac",
                 str(output_path),
             ])
         else:
