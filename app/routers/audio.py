@@ -110,6 +110,15 @@ def _build_html_interface() -> str:
             margin: 0 0 8px 0;
             font-weight: 700;
         }
+        .history-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+        .danger-button {
+            background: #dc2626;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -137,6 +146,9 @@ def _build_html_interface() -> str:
 
         <section class="history-section">
             <h2>Audios combinados anteriores</h2>
+            <div class="history-actions">
+                <button id="clear-history-button" class="danger-button" type="button">Limpiar audios anteriores</button>
+            </div>
             <div id="history-list"></div>
         </section>
     </div>
@@ -144,6 +156,7 @@ def _build_html_interface() -> str:
         const form = document.getElementById('audio-form');
         const status = document.getElementById('status');
         const historyList = document.getElementById('history-list');
+        const clearHistoryButton = document.getElementById('clear-history-button');
 
         async function refreshHistory() {
             try {
@@ -177,6 +190,32 @@ def _build_html_interface() -> str:
                 historyList.innerHTML = '<p class="hint">No se pudo cargar el historial de audio.</p>';
             }
         }
+
+        clearHistoryButton.addEventListener('click', async () => {
+            const confirmed = window.confirm('¿Seguro que quieres borrar todos los audios combinados anteriores?');
+            if (!confirmed) {
+                return;
+            }
+
+            status.textContent = 'Limpiando historial...';
+            try {
+                const response = await fetch('/audio/history', {
+                    method: 'DELETE',
+                });
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ detail: 'No se pudo limpiar el historial.' }));
+                    status.textContent = error.detail || 'No se pudo limpiar el historial.';
+                    return;
+                }
+
+                await refreshHistory();
+                status.textContent = 'Historial limpiado correctamente.';
+            } catch (error) {
+                status.textContent = 'Ocurrió un error al limpiar el historial.';
+                console.error(error);
+            }
+        });
 
         window.addEventListener('DOMContentLoaded', refreshHistory);
 
@@ -268,6 +307,17 @@ def audio_history():
             )
 
     return JSONResponse({"items": items})
+
+
+@router.delete("/history")
+def clear_audio_history():
+    deleted_count = 0
+    for audio_path in AUDIO_HISTORY_DIR.glob("*"):
+        if audio_path.is_file():
+            audio_path.unlink()
+            deleted_count += 1
+
+    return JSONResponse({"deleted": deleted_count})
 
 
 @router.get("/history-files/{filename}")
