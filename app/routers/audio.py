@@ -7,7 +7,7 @@ from typing import List
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from imageio_ffmpeg import get_ffmpeg_exe
 
 router = APIRouter(prefix="/audio", tags=["Audio"])
@@ -20,6 +20,8 @@ MEDIA_TYPES = {
 }
 
 FFMPEG_BIN = Path(get_ffmpeg_exe())
+AUDIO_HISTORY_DIR = Path(__file__).resolve().parents[2] / "audio_history"
+AUDIO_HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _run_ffmpeg(command: List[str], cwd: Path | None = None) -> None:
@@ -91,6 +93,22 @@ def _build_html_interface() -> str:
             color: #475569;
             font-size: 14px;
         }
+        .history-section {
+            margin-top: 24px;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 20px;
+        }
+        .history-item {
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: #f8fafc;
+        }
+        .history-item p {
+            margin: 0 0 8px 0;
+            font-weight: 700;
+        }
     </style>
 </head>
 <body>
@@ -114,10 +132,51 @@ def _build_html_interface() -> str:
             <button type="submit">Combinar audio</button>
         </form>
         <div id="status" class="status" aria-live="polite"></div>
+
+        <section class="history-section">
+            <h2>Audios combinados anteriores</h2>
+            <div id="history-list"></div>
+        </section>
     </div>
     <script>
         const form = document.getElementById('audio-form');
         const status = document.getElementById('status');
+        const historyList = document.getElementById('history-list');
+
+        async function refreshHistory() {
+            try {
+                const response = await fetch('/audio/history');
+                const data = await response.json();
+                historyList.innerHTML = '';
+
+                if (!data.items.length) {
+                    historyList.innerHTML = '<p class="hint">Todavía no hay audios combinados guardados.</p>';
+                    return;
+                }
+
+                data.items.forEach((item) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'history-item';
+
+                    const label = document.createElement('p');
+                    label.textContent = item.name;
+
+                    const audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = item.url;
+                    audio.style.width = '100%';
+
+                    wrapper.appendChild(label);
+                    wrapper.appendChild(audio);
+                    historyList.appendChild(wrapper);
+                });
+            } catch (error) {
+                console.error(error);
+                historyList.innerHTML = '<p class="hint">No se pudo cargar el historial de audio.</p>';
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', refreshHistory);
 
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
@@ -176,6 +235,7 @@ def _build_html_interface() -> str:
 
                 anchor.id = 'download-link';
                 document.querySelector('.card').appendChild(anchor);
+                await refreshHistory();
                 status.textContent = '¡Audio combinado y listo para reproducir!';
             } catch (error) {
                 status.textContent = 'Ocurrió un error al procesar el archivo.';
@@ -191,6 +251,36 @@ def _build_html_interface() -> str:
 @router.get("/interface", response_class=HTMLResponse)
 def audio_interface():
     return HTMLResponse(content=_build_html_interface())
+
+
+@router.get("/history")
+def audio_history():
+    items = []
+    for audio_path in sorted(AUDIO_HISTORY_DIR.glob("*"), key=lambda path: path.stat().st_mtime, reverse=True):
+        if audio_path.is_file() and audio_path.suffix.lower().lstrip(".") in MEDIA_TYPES:
+            items.append(
+                {
+                    "name": audio_path.name,
+                    "url": f"/audio/history-files/{audio_path.name}",
+                }
+            )
+
+    return JSONResponse({"items": items})
+
+
+@router.get("/history-files/{filename}")
+def audio_history_file(filename: str):
+    safe_name = Path(filename).name
+    target_path = AUDIO_HISTORY_DIR / safe_name
+
+    if not target_path.exists() or not target_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio no encontrado.")
+
+    return FileResponse(
+        target_path,
+        media_type=MEDIA_TYPES.get(target_path.suffix.lower().lstrip("."), "application/octet-stream"),
+        headers={"Content-Disposition": f'inline; filename="{target_path.name}"'},
+    )
 
 
 @router.post("/combine-loop")
@@ -317,6 +407,8 @@ async def combine_loop(
 
         download_filename = f"combined-loop_{uuid4().hex}.{output_format}"
         final_bytes = output_path.read_bytes()
+        persisted_output_path = AUDIO_HISTORY_DIR / download_filename
+        persisted_output_path.write_bytes(final_bytes)
 
     return Response(
         content=final_bytes,
