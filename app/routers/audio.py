@@ -145,13 +145,38 @@ def _build_html_interface() -> str:
 
                 const blob = await response.blob();
                 const outputFormat = document.getElementById('output_format').value;
+                const audioUrl = URL.createObjectURL(blob);
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = audioUrl;
+                audio.style.width = '100%';
+                audio.style.marginTop = '16px';
+
+                const existingPlayer = document.getElementById('audio-player');
+                if (existingPlayer) {
+                    existingPlayer.remove();
+                }
+
+                audio.id = 'audio-player';
+                document.querySelector('.card').appendChild(audio);
+
                 const downloadUrl = URL.createObjectURL(blob);
                 const anchor = document.createElement('a');
                 anchor.href = downloadUrl;
                 anchor.download = `looped-audio.${outputFormat}`;
-                anchor.click();
-                URL.revokeObjectURL(downloadUrl);
-                status.textContent = '¡Audio combinado y listo para descargar!';
+                anchor.textContent = 'Descargar archivo generado';
+                anchor.style.display = 'inline-block';
+                anchor.style.marginTop = '12px';
+                anchor.style.color = '#2563eb';
+
+                const existingDownloadLink = document.getElementById('download-link');
+                if (existingDownloadLink) {
+                    existingDownloadLink.remove();
+                }
+
+                anchor.id = 'download-link';
+                document.querySelector('.card').appendChild(anchor);
+                status.textContent = '¡Audio combinado y listo para reproducir!';
             } catch (error) {
                 status.textContent = 'Ocurrió un error al procesar el archivo.';
                 console.error(error);
@@ -296,5 +321,8 @@ async def combine_loop(
     return Response(
         content=final_bytes,
         media_type=MEDIA_TYPES[output_format],
-        headers={"Content-Disposition": f'attachment; filename="{download_filename}"'},
+        headers={
+            "Content-Disposition": f'inline; filename="{download_filename}"',
+            "Content-Type": MEDIA_TYPES[output_format],
+        },
     )
