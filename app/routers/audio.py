@@ -323,7 +323,7 @@ def clear_audio_history():
 @router.get("/history-files/{filename}")
 def audio_history_file(filename: str):
     safe_name = Path(filename).name
-    target_path = AUDIO_HISTORY_DIR / safe_name
+    target_path = AUDIO_HISTORY_DIR / safe_name 
 
     if not target_path.exists() or not target_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio no encontrado.")
