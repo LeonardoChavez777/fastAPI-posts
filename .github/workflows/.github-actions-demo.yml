@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres
         env:
           POSTGRES_DB: ${{ secrets.DATABASE_NAME }}
           POSTGRES_USER: ${{ secrets.DATABASE_USERNAME }}
