@@ -3,6 +3,7 @@ name: GitHub Actions Demo
 on: [push, pull_request]
 jobs:
   Explore-GitHub-Actions:
+    environment: testing
     env:
       DATABASE_HOSTNAME: ${{ secrets.DATABASE_HOSTNAME }}
       DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
