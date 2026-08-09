@@ -3,6 +3,12 @@ name: GitHub Actions Demo
 on: [push, pull_request]
 jobs:
   Explore-GitHub-Actions:
+    env:
+      DATABASE_HOSTNAME: ${{ secrets.DATABASE_HOSTNAME }}
+      DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+      DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+      DATABASE_USERNAME: ${{ secrets.DATABASE_USERNAME }}
+      DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
