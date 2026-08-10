@@ -31,4 +31,4 @@ app.include_router(audio.router)
 
 @app.get("/")
 def root():
-    return {"message": "epico"}   
+    return {"message": "actualizado automaticamente gracias a github actions y docker compose"}   
