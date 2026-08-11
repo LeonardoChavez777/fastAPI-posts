@@ -78,3 +78,6 @@ jobs:
             cd /home/leo/app2Docker
             docker compose -f docker-compose-prod.yml pull
             docker compose -f docker-compose-prod.yml up -d
+            docker image prune -af
+#docker image prune -af esto borra la imagen vieja para que no ocupe espacio en el servidor. Esque es reducido de espacio el mio uu
+            
