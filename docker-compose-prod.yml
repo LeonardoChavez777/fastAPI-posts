@@ -7,7 +7,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      DATABASE_HOSTNAME: ${DATABASE_HOSTNAME}
+      DATABASE_HOSTNAME: postgres
       DATABASE_PORT: ${DATABASE_PORT}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       DATABASE_NAME: ${DATABASE_NAME}
