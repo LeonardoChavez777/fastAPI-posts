@@ -1,4 +1,4 @@
-FROM python:3.14.5
+FROM python:3.14.5-slim
 
 WORKDIR /usr/src/app
 #esto es para crear un directorio de trabajo dentro del contenedor
