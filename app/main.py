@@ -31,4 +31,4 @@ app.include_router(audio.router)
 
 @app.get("/")
 def root():
-    return {"message": "lo mas epico actualizado en aws tambien :D, tmr oe 2"}
+    return {"message": "oe q vaina q no haya espacio"}

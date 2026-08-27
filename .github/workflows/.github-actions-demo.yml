@@ -76,6 +76,8 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd /home/leo/app2Docker
+            docker compose -f docker-compose-prod.yml down
+            docker system prune -a 
             docker compose -f docker-compose-prod.yml pull
             docker compose -f docker-compose-prod.yml up -d
             docker image prune -af
