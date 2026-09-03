@@ -1,3 +1,6 @@
 __pyache__
 venv/
 .env
+.terraform/
+*.tfstate
+*.tfstate.*
